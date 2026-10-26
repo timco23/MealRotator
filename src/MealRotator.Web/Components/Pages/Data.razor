@@ -1,0 +1,112 @@
+@page "/data"
+@inject MealPlanningService Planning
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+
+<div class="page-header">
+    <div>
+        <MudText Typo="Typo.h4" HtmlTag="h1">Gegevens</MudText>
+        <MudText Typo="Typo.subtitle1" Class="mud-text-secondary">
+            Maak een back-up of zet je gegevens over naar een andere installatie.
+        </MudText>
+    </div>
+</div>
+
+<div class="data-grid">
+    <MudPaper Outlined="true" Elevation="0" Class="pa-4 data-card">
+        <MudText Typo="Typo.h6">Exporteren</MudText>
+        <MudText Class="mud-text-secondary">
+            Bewaart al je gerechten, tags, planningen en wat je gegeten hebt in één JSON-bestand.
+        </MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Outlined.FileDownload"
+                   Disabled="_busy" OnClick="ExportAsync" Class="align-self-start">
+            Exporteren…
+        </MudButton>
+    </MudPaper>
+
+    <MudPaper Outlined="true" Elevation="0" Class="pa-4 data-card">
+        <MudText Typo="Typo.h6">Importeren</MudText>
+        <MudText Class="mud-text-secondary">
+            Voegt gerechten en dagen uit een export toe aan wat er al staat. Dagen die al ingevuld zijn,
+            blijven ongewijzigd; er gaat dus niets verloren.
+        </MudText>
+        <MudFileUpload T="IBrowserFile" @ref="_upload" Accept=".json" Disabled="_busy" FilesChanged="ImportAsync">
+            <CustomContent>
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Outlined.FileUpload"
+                           Disabled="_busy" OnClick="context.OpenFilePickerAsync" Class="align-self-start">
+                    Importeren…
+                </MudButton>
+            </CustomContent>
+        </MudFileUpload>
+    </MudPaper>
+</div>
+
+@code {
+    private bool _busy;
+    private const long MaxImportBytes = 10 * 1024 * 1024;
+
+    private MudFileUpload<IBrowserFile>? _upload;
+
+    private async Task ExportAsync()
+    {
+        await RunFileActionAsync(async () =>
+        {
+            var fileName = $"maaltijdplanner-{Format.Today:yyyy-MM-dd}.json";
+            using var stream = new MemoryStream();
+            await Planning.ExportAsync(stream);
+            stream.Position = 0;
+
+            using var reference = new DotNetStreamReference(stream);
+            await using var module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/download.js");
+            await module.InvokeVoidAsync("downloadFile", fileName, reference);
+            Snackbar.Add($"Geëxporteerd naar {fileName}", Severity.Success);
+        }, "Het bestand kon niet worden opgeslagen.");
+    }
+
+    private async Task ImportAsync(IBrowserFile? file)
+    {
+        if (file is null)
+            return;
+
+        await RunFileActionAsync(async () =>
+        {
+            // ImportAsync needs a seekable stream; the browser stream is forward-only.
+            using var stream = new MemoryStream();
+            await using (var upload = file.OpenReadStream(MaxImportBytes))
+                await upload.CopyToAsync(stream);
+            stream.Position = 0;
+
+            var result = await Planning.ImportAsync(stream);
+            Snackbar.Add(Summary(result), Severity.Success);
+        }, "Het bestand kon niet worden geopend.");
+
+        // Forget the file so choosing the same one again still triggers a change.
+        if (_upload is not null)
+            await _upload.ClearAsync();
+    }
+
+    private async Task RunFileActionAsync(Func<Task> action, string ioError)
+    {
+        _busy = true;
+        try
+        {
+            await Snackbar.RunAsync(action);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Snackbar.Add(ioError, Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private static string Summary(ImportResult result) =>
+        result is { MealsAdded: 0, TagsAdded: 0, EntriesAdded: 0 }
+            ? "Niets toegevoegd: alles uit dit bestand stond er al."
+            : $"Import klaar: {Count(result.MealsAdded, "gerecht", "gerechten")}, "
+              + $"{Count(result.TagsAdded, "tag", "tags")} en {Count(result.EntriesAdded, "dag", "dagen")} toegevoegd.";
+
+    private static string Count(int n, string singular, string plural) => $"{n} {(n == 1 ? singular : plural)}";
+}

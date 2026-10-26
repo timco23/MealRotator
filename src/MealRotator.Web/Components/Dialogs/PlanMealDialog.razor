@@ -1,0 +1,157 @@
+@inject MealPlanningService Planning
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">@Title</MudText>
+    </TitleContent>
+
+    <DialogContent>
+        @if (_mealNames is null)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="my-4" />
+        }
+        else if (_mealNames.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
+                Je hebt nog geen gerechten.
+                <MudLink OnClick="GoToMeals" Typo="Typo.body2">Voeg er eerst een paar toe bij Gerechten.</MudLink>
+            </MudAlert>
+        }
+        else
+        {
+            @if (_suggestions.Count > 0)
+            {
+                <MudText Typo="Typo.subtitle2">Lang niet gegeten</MudText>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">Klik om meteen te kiezen.</MudText>
+                <div class="suggestions mt-2 mb-4">
+                    @foreach (var suggestion in _suggestions)
+                    {
+                        <MudChip T="string" Variant="Variant.Outlined" Color="Color.Primary" Disabled="_saving"
+                                 OnClick="() => SaveAsync(suggestion.Name)">
+                            @suggestion.Name
+                            <span class="chip-meta">@Format.AgoShort(suggestion.LastEaten)</span>
+                        </MudChip>
+                    }
+                </div>
+                <MudDivider Class="mb-4" />
+            }
+
+            <MudAutocomplete T="string"
+                             Label="@(_suggestions.Count > 0 ? "Of kies een gerecht" : "Kies een gerecht")"
+                             Placeholder="Begin te typen…"
+                             @bind-Value="_selected"
+                             TextChanged="text => _text = text"
+                             SearchFunc="SearchAsync"
+                             CoerceText="false"
+                             CoerceValue="false"
+                             MaxItems="null"
+                             Clearable="true"
+                             Variant="Variant.Outlined">
+                <NoItemsTemplate>
+                    <MudText Class="px-4 py-2 mud-text-secondary">
+                        Geen gerecht gevonden. Nieuwe gerechten voeg je toe bij Gerechten.
+                    </MudText>
+                </NoItemsTemplate>
+            </MudAutocomplete>
+        }
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton OnClick="() => MudDialog.Cancel()">Annuleren</MudButton>
+        @if (_mealNames is { Count: > 0 })
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_saving" OnClick="SaveTypedAsync">
+                Opslaan
+            </MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private const int SuggestionCount = 5;
+
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter, EditorRequired]
+    public DateOnly Date { get; set; }
+
+    [Parameter]
+    public PlanMode Mode { get; set; } = PlanMode.Plan;
+
+    [Parameter]
+    public string? InitialMeal { get; set; }
+
+    private List<string>? _mealNames;
+    private List<RotationItem> _suggestions = [];
+    private string? _selected;
+    private string? _text;
+    private bool _saving;
+
+    private string Title => Mode == PlanMode.Plan
+        ? $"Plannen voor {Format.DayShort(Date)}"
+        : $"Wat heb je gegeten op {Format.DayShort(Date)}?";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _selected = InitialMeal;
+        _text = InitialMeal;
+
+        var meals = await Planning.GetMealsAsync();
+        var rotation = await Planning.GetRotationAsync();
+
+        _mealNames = meals.Select(m => m.Name).ToList();
+
+        // The rotator: whatever hasn't been eaten for the longest time. When planning we skip meals that
+        // are already planned; when recording we don't, since you may have eaten something that is planned later.
+        _suggestions = rotation
+            .Where(r => Mode == PlanMode.Eaten || r.NextPlanned is null)
+            .Take(SuggestionCount)
+            .ToList();
+    }
+
+    private Task<IEnumerable<string>> SearchAsync(string? value, CancellationToken token)
+    {
+        IEnumerable<string> result = string.IsNullOrWhiteSpace(value)
+            ? _mealNames!
+            : _mealNames!.Where(n => n.Contains(value.Trim(), StringComparison.CurrentCultureIgnoreCase));
+        return Task.FromResult(result);
+    }
+
+    private Task SaveTypedAsync() =>
+        SaveAsync(string.IsNullOrWhiteSpace(_text) ? _selected ?? "" : _text);
+
+    private async Task SaveAsync(string mealName)
+    {
+        _saving = true;
+
+        var displayName = DisplayName(mealName);
+        var ok = Mode == PlanMode.Plan
+            ? await Snackbar.RunAsync(() => Planning.PlanAsync(Date, mealName),
+                $"Gepland: {displayName} op {Format.DayShort(Date)}")
+            : await Snackbar.RunAsync(() => Planning.RecordEatenAsync(Date, mealName),
+                $"Gegeten: {displayName} op {Format.DayShort(Date)}");
+
+        _saving = false;
+
+        // On error the dialog stays open so a different meal can be chosen.
+        if (ok)
+            MudDialog.Close(DialogResult.Ok(true));
+    }
+
+    /// <summary>Returns the name as stored in the collection, even if it was typed differently.</summary>
+    private string DisplayName(string typed)
+    {
+        var normalized = MealPlanningService.NormalizeName(typed);
+        return _mealNames?.FirstOrDefault(n => MealPlanningService.NormalizeName(n) == normalized)
+            ?? MealPlanningService.CleanName(typed);
+    }
+
+    private void GoToMeals()
+    {
+        MudDialog.Cancel();
+        Navigation.NavigateTo("meals");
+    }
+}

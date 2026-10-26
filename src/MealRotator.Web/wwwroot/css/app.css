@@ -1,0 +1,235 @@
+html, body {
+  margin: 0;
+  font-family: "Segoe UI", system-ui, sans-serif;
+}
+
+h1:focus {
+  outline: none;
+}
+
+/* ---------- Pagina's ---------- */
+
+.page-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 48px 24px;
+  text-align: center;
+}
+
+.search-field {
+  max-width: 420px;
+}
+
+.filter-field {
+  max-width: 260px;
+}
+
+/* Search and tag filter on one line, wrapping on a narrow window. */
+.filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.filter-row .search-field {
+  flex: 1 1 260px;
+}
+
+.tag-select {
+  flex: 0 0 220px;
+}
+
+/* Meals page: new meal and tags side by side on a wide window. */
+.meals-top {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  align-items: start;
+  gap: 16px;
+}
+
+.tag-pills {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tag-pill {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  white-space: nowrap;
+  color: var(--mud-palette-text-secondary);
+  background: color-mix(in srgb, var(--mud-palette-primary) 12%, transparent);
+}
+
+.add-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.add-row__field {
+  flex: 1;
+  margin-top: 0;
+}
+
+/* Data page: export and import side by side on a wide window. */
+.data-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+  max-width: 900px;
+}
+
+.data-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ---------- Week ---------- */
+
+/* Calendar: one row of seven day cards, Monday to Sunday. */
+.week-calendar {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.day-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 170px;
+}
+
+.day-card--today {
+  border: 2px solid var(--mud-palette-primary) !important;
+  background: color-mix(in srgb, var(--mud-palette-primary) 7%, var(--mud-palette-surface)) !important;
+}
+
+.day-card__name {
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.day-card__today {
+  margin-left: 4px;
+  color: var(--mud-palette-primary);
+  font-weight: 600;
+}
+
+.day-card__meal {
+  line-height: 1.3;
+  margin-bottom: 6px;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Random meal dialog ---------- */
+
+.dice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0 4px;
+  text-align: center;
+}
+
+.dice__icon {
+  color: var(--mud-palette-primary);
+}
+
+.dice__icon--rolling {
+  animation: dice-spin 0.6s linear infinite;
+}
+
+.dice__meal {
+  min-height: 1.3em;
+  overflow-wrap: anywhere;
+}
+
+.dice__meal--rolling {
+  opacity: 0.5;
+}
+
+.dice__meal--landed {
+  animation: dice-land 0.3s ease-out;
+}
+
+.dice__meta {
+  min-height: 1.5em;
+}
+
+@keyframes dice-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes dice-land {
+  from {
+    opacity: 0.4;
+    transform: scale(0.85);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dice__icon--rolling,
+  .dice__meal--landed {
+    animation: none;
+  }
+}
+
+/* ---------- Plan-dialoog ---------- */
+
+.suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.chip-meta {
+  margin-left: 6px;
+  font-size: 0.75rem;
+  opacity: 0.7;
+}
+
+/* ---------- Foutmelding van Blazor zelf ---------- */
+
+#blazor-error-ui {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.75rem 1.25rem;
+  background: #fff3cd;
+  color: #5c4400;
+  box-shadow: 0 -1px 4px rgba(0, 0, 0, 0.2);
+  z-index: 2000;
+}
+
+#blazor-error-ui .reload {
+  margin-left: 0.5rem;
+}
+
+#blazor-error-ui .dismiss {
+  position: absolute;
+  right: 0.75rem;
+  top: 0.6rem;
+  cursor: pointer;
+}

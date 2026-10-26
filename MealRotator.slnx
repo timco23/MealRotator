@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/MealRotator.Core/MealRotator.Core.csproj" />
+    <Project Path="src/MealRotator.Web/MealRotator.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MealRotator.Tests/MealRotator.Tests.csproj" />
+  </Folder>
+</Solution>

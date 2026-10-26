@@ -1,0 +1,16 @@
+@* The tags of a meal as small, quiet labels. Renders nothing without tags. *@
+
+@if (Tags.Count > 0)
+{
+    <span class="tag-pills">
+        @foreach (var tag in Tags)
+        {
+            <span class="tag-pill">@tag</span>
+        }
+    </span>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<string> Tags { get; set; } = [];
+}

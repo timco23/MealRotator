@@ -1,0 +1,133 @@
+@* Choose the tags of one meal; a new tag can be created right here. *@
+@inject MealPlanningService Planning
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Tags voor @MealName</MudText>
+    </TitleContent>
+
+    <DialogContent>
+        @if (_tags is null)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="my-4" />
+        }
+        else
+        {
+            @if (_tags.Count == 0)
+            {
+                <MudText Class="mud-text-secondary mb-3">Je hebt nog geen tags. Maak hieronder je eerste aan.</MudText>
+            }
+            else
+            {
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">Klik op een tag om hem aan of uit te zetten.</MudText>
+                <div class="suggestions mt-2 mb-4">
+                    @foreach (var tag in _tags)
+                    {
+                        var selected = _selected.Contains(tag.Id);
+                        <MudChip T="int" Variant="@(selected ? Variant.Filled : Variant.Outlined)"
+                                 Color="@(selected ? Color.Primary : Color.Default)"
+                                 Icon="@(selected ? Icons.Material.Filled.Check : null)"
+                                 aria-pressed="@(selected ? "true" : "false")"
+                                 OnClick="() => Toggle(tag.Id)">
+                            @tag.Name
+                        </MudChip>
+                    }
+                </div>
+            }
+
+            <div class="add-row">
+                <MudTextField T="string"
+                              @bind-Value="_newTag"
+                              Immediate="true"
+                              Label="Nieuwe tag"
+                              Placeholder="Bijvoorbeeld: snelklaar"
+                              MaxLength="MealPlanningService.MaxTagLength"
+                              OnKeyDown="OnNewTagKeyDownAsync"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              Class="add-row__field" />
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                           Disabled="_saving" OnClick="AddTagAsync">
+                    Toevoegen
+                </MudButton>
+            </div>
+        }
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton OnClick="() => MudDialog.Cancel()">Annuleren</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_tags is null || _saving" OnClick="SaveAsync">
+            Opslaan
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter, EditorRequired]
+    public int MealId { get; set; }
+
+    [Parameter, EditorRequired]
+    public string MealName { get; set; } = "";
+
+    /// <summary>Names of the tags the meal has now.</summary>
+    [Parameter, EditorRequired]
+    public IReadOnlyList<string> Tags { get; set; } = [];
+
+    private IReadOnlyList<TagListItem>? _tags;
+    private readonly HashSet<int> _selected = [];
+    private string? _newTag;
+    private bool _saving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _tags = await Planning.GetTagsAsync();
+        _selected.UnionWith(_tags.Where(t => Tags.Contains(t.Name)).Select(t => t.Id));
+    }
+
+    private void Toggle(int tagId)
+    {
+        if (!_selected.Remove(tagId))
+            _selected.Add(tagId);
+    }
+
+    private async Task OnNewTagKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            await AddTagAsync();
+    }
+
+    /// <summary>Creates the tag and selects it straight away.</summary>
+    private async Task AddTagAsync()
+    {
+        if (_saving)
+            return;
+
+        _saving = true;
+        var name = MealPlanningService.CleanName(_newTag ?? "");
+        var id = 0;
+        var ok = await Snackbar.RunAsync(async () => id = await Planning.AddTagAsync(name));
+        _saving = false;
+
+        if (!ok)
+            return;
+
+        _newTag = "";
+        _selected.Add(id);
+        _tags = await Planning.GetTagsAsync();
+    }
+
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        var ok = await Snackbar.RunAsync(() => Planning.SetMealTagsAsync(MealId, _selected),
+            $"Tags opgeslagen voor {MealName}");
+        _saving = false;
+
+        if (ok)
+            MudDialog.Close(DialogResult.Ok(true));
+    }
+}

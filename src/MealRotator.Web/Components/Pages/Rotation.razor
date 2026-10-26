@@ -1,0 +1,164 @@
+@page "/rotation"
+@inject MealPlanningService Planning
+@inject IDialogService DialogService
+
+<div class="page-header">
+    <div>
+        <MudText Typo="Typo.h4" HtmlTag="h1">Maaltijdrotatie</MudText>
+        <MudText Typo="Typo.subtitle1" Class="mud-text-secondary">
+            Standaard staan gerechten die je het langst niet hebt gegeten bovenaan.
+        </MudText>
+    </div>
+</div>
+
+@if (_items is null)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else if (_items.Count == 0 && string.IsNullOrWhiteSpace(_search) && _tagId == AllTags)
+{
+    <EmptyState Icon="@Icons.Material.Outlined.MenuBook" Title="Nog geen gerechten"
+                Text="Voeg eerst gerechten toe; daarna zie je hier wat het langst geleden is."
+                ButtonText="Naar gerechten" ButtonHref="meals" />
+}
+else
+{
+    <div class="filter-row mb-4">
+        <MudTextField T="string"
+                      @bind-Value="_search"
+                      DebounceInterval="300"
+                      OnDebounceIntervalElapsed="SearchAsync"
+                      Placeholder="Zoek een gerecht"
+                      Adornment="Adornment.Start"
+                      AdornmentIcon="@Icons.Material.Filled.Search"
+                      Clearable="true"
+                      Variant="Variant.Outlined"
+                      Margin="Margin.Dense"
+                      Class="search-field" />
+        @if (_tags is { Count: > 0 })
+        {
+            <div class="tag-select">
+                <MudSelect T="int" Value="_tagId" ValueChanged="TagChangedAsync" ToStringFunc="TagName" Label="Tag"
+                           Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                    <MudSelectItem T="int" Value="AllTags">@TagName(AllTags)</MudSelectItem>
+                    @foreach (var tag in _tags)
+                    {
+                        <MudSelectItem T="int" Value="tag.Id">@tag.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </div>
+        }
+    </div>
+
+    <MudTable T="RotationItem" Items="_items" Hover="true" Elevation="0" Outlined="true"
+              AllowUnsorted="false" SortLabel="Sorteren op">
+        <HeaderContent>
+            <MudTh>
+                <MudTableSortLabel T="RotationItem" SortBy="i => i.Name">Gerecht</MudTableSortLabel>
+            </MudTh>
+            <MudTh>
+                @* Ascending = never eaten first, then longest ago: the default rotation order. *@
+                <MudTableSortLabel T="RotationItem" SortBy="i => i.LastEaten ?? DateOnly.MinValue"
+                                   InitialDirection="SortDirection.Ascending">
+                    Laatst gegeten
+                </MudTableSortLabel>
+            </MudTh>
+            <MudTh>
+                <MudTableSortLabel T="RotationItem" SortBy="i => i.EatenCount"
+                                   InitialSortDirection="SortDirection.Descending">
+                    Keer gegeten
+                </MudTableSortLabel>
+            </MudTh>
+            <MudTh Style="text-align:right"></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Gerecht">
+                <div class="d-flex flex-wrap align-center gap-2">
+                    <b>@context.Name</b>
+                    <TagPills Tags="context.Tags" />
+                </div>
+            </MudTd>
+            <MudTd DataLabel="Laatst gegeten">
+                <div class="d-flex flex-wrap align-center gap-2">
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="AgoColor(context.LastEaten)" Class="ma-0">
+                        @Format.Ago(context.LastEaten)
+                    </MudChip>
+                    @if (context.LastEaten is { } last)
+                    {
+                        <MudText Typo="Typo.body2" Class="mud-text-secondary">@Format.DateLong(last)</MudText>
+                    }
+                </div>
+            </MudTd>
+            <MudTd DataLabel="Keer gegeten">@context.EatenCount</MudTd>
+            <MudTd Style="text-align:right">
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+                           StartIcon="@Icons.Material.Outlined.EventAvailable"
+                           OnClick="() => PlanAsync(context)">
+                    Plan
+                </MudButton>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Class="mud-text-secondary py-4">
+                @(string.IsNullOrWhiteSpace(_search) ? "Geen gerechten met deze tag." : $"Geen gerechten gevonden voor “{_search}”.")
+            </MudText>
+        </NoRecordsContent>
+    </MudTable>
+}
+
+@code {
+    // From this many days ago, the chip is highlighted as "due again".
+    private const int LongAgoDays = 21;
+
+    // Tag ids start at 1, so 0 can stand for "no tag filter".
+    private const int AllTags = 0;
+
+    private IReadOnlyList<RotationItem>? _items;
+    private IReadOnlyList<TagListItem>? _tags;
+    private string? _search;
+    private int _tagId = AllTags;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _tags = await Planning.GetTagsAsync();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync() =>
+        _items = await Planning.GetRotationAsync(_search, _tagId == AllTags ? null : _tagId);
+
+    private string TagName(int tagId) =>
+        tagId == AllTags ? "Alle tags" : _tags?.FirstOrDefault(t => t.Id == tagId)?.Name ?? "";
+
+    private Task TagChangedAsync(int tagId)
+    {
+        _tagId = tagId;
+        return LoadAsync();
+    }
+
+    private Task SearchAsync(string? search)
+    {
+        _search = search;
+        return LoadAsync();
+    }
+
+    private async Task PlanAsync(RotationItem item)
+    {
+        var parameters = new DialogParameters<PlanDateDialog> { { d => d.MealName, item.Name } };
+        // No BackdropClick: clicking a date re-renders the calendar, and without this option
+        // MudBlazor treats that as a click outside the dialog (which then closes).
+        var options = new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true, BackdropClick = false };
+
+        var dialog = await DialogService.ShowAsync<PlanDateDialog>("", parameters, options);
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+            await LoadAsync();
+    }
+
+    private static Color AgoColor(DateOnly? lastEaten) => lastEaten switch
+    {
+        null => Color.Tertiary,
+        { } date when Format.DaysSince(date) >= LongAgoDays => Color.Secondary,
+        _ => Color.Default
+    };
+}

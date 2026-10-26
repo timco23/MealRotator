@@ -1,0 +1,244 @@
+@page "/meals"
+@inject MealPlanningService Planning
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<div class="page-header">
+    <div>
+        <MudText Typo="Typo.h4" HtmlTag="h1">Gerechten</MudText>
+        <MudText Typo="Typo.subtitle1" Class="mud-text-secondary">
+            Voeg hier gerechten toe voordat je ze in de weekplanner gebruikt, en groepeer ze met je eigen tags.
+        </MudText>
+    </div>
+</div>
+
+<div class="meals-top mb-6">
+    <MudPaper Outlined="true" Elevation="0" Class="pa-4">
+        <div class="add-row">
+            <MudTextField T="string"
+                          @ref="_nameField"
+                          @bind-Value="_newName"
+                          Immediate="true"
+                          Label="Nieuw gerecht"
+                          Placeholder="Bijvoorbeeld: spaghetti bolognese"
+                          MaxLength="MealPlanningService.MaxNameLength"
+                          OnKeyDown="OnNameKeyDownAsync"
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          Class="add-row__field" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                       Disabled="_saving" OnClick="AddAsync">
+                Toevoegen
+            </MudButton>
+        </div>
+    </MudPaper>
+
+    <MudPaper Outlined="true" Elevation="0" Class="pa-4">
+        <div class="add-row">
+            <MudTextField T="string"
+                          @bind-Value="_newTag"
+                          Immediate="true"
+                          Label="Nieuwe tag"
+                          Placeholder="Bijvoorbeeld: pasta, snelklaar, rijst"
+                          MaxLength="MealPlanningService.MaxTagLength"
+                          OnKeyDown="OnTagKeyDownAsync"
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          Class="add-row__field" />
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                       Disabled="_saving" OnClick="AddTagAsync">
+                Toevoegen
+            </MudButton>
+        </div>
+        @if (_tags is { Count: > 0 })
+        {
+            <MudText Typo="Typo.caption" Class="mud-text-secondary d-block mt-3">
+                Het getal is het aantal gerechten met die tag. Klik op een tag om hem te hernoemen of te verwijderen.
+            </MudText>
+            <div class="suggestions mt-1">
+                @foreach (var tag in _tags)
+                {
+                    <MudChip T="string" Variant="Variant.Outlined" Icon="@Icons.Material.Outlined.Sell" OnClick="() => EditTagAsync(tag)">
+                        @tag.Name
+                        <span class="chip-meta">@tag.MealCount</span>
+                    </MudChip>
+                }
+            </div>
+        }
+        else if (_tags is not null)
+        {
+            <MudText Typo="Typo.body2" Class="mud-text-secondary mt-3">
+                Nog geen tags. Met tags groepeer je gerechten en filter je in Rotatie en met de dobbelsteen.
+            </MudText>
+        }
+    </MudPaper>
+</div>
+
+@if (_meals is null)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else if (_meals.Count == 0)
+{
+    <EmptyState Icon="@Icons.Material.Outlined.RamenDining" Title="Nog geen gerechten"
+                Text="Voeg hierboven je eerste gerecht toe, bijvoorbeeld wat je deze week nog gaat eten." />
+}
+else
+{
+    <MudTable T="MealListItem" Items="_meals" Filter="Matches" Hover="true" Elevation="0" Outlined="true">
+        <ToolBarContent>
+            <MudText Typo="Typo.subtitle1">@_meals.Count @(_meals.Count == 1 ? "gerecht" : "gerechten")</MudText>
+            <MudSpacer />
+            <MudTextField T="string"
+                          @bind-Value="_filter"
+                          Immediate="true"
+                          Placeholder="Filter"
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Filled.FilterList"
+                          Clearable="true"
+                          Margin="Margin.Dense"
+                          Class="filter-field mt-0" />
+        </ToolBarContent>
+        <HeaderContent>
+            <MudTh>Gerecht</MudTh>
+            <MudTh>Tags</MudTh>
+            <MudTh>Keer gegeten</MudTh>
+            <MudTh Style="text-align:right"></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Gerecht"><b>@context.Name</b></MudTd>
+            <MudTd DataLabel="Tags">
+                <div class="d-flex flex-wrap align-center gap-1">
+                    <TagPills Tags="context.Tags" />
+                    <MudTooltip Text="Tags kiezen">
+                        <MudIconButton Icon="@(context.Tags.Count == 0 ? Icons.Material.Outlined.NewLabel : Icons.Material.Outlined.Edit)"
+                                       Size="Size.Small" aria-label="@($"Tags kiezen voor {context.Name}")"
+                                       OnClick="() => EditMealTagsAsync(context)" />
+                    </MudTooltip>
+                </div>
+            </MudTd>
+            <MudTd DataLabel="Keer gegeten">
+                <MudText Typo="Typo.body2" Class="mud-text-secondary">@Format.TimesEaten(context.EatenCount)</MudText>
+            </MudTd>
+            <MudTd Style="text-align:right">
+                <MudTooltip Text="Verwijderen">
+                    <MudIconButton Icon="@Icons.Material.Outlined.Delete" Size="Size.Small"
+                                   aria-label="@($"{context.Name} verwijderen")"
+                                   OnClick="() => DeleteAsync(context)" />
+                </MudTooltip>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Class="mud-text-secondary py-4">Geen gerechten gevonden voor “@_filter”.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+}
+
+@code {
+    private MudTextField<string> _nameField = null!;
+    private IReadOnlyList<MealListItem>? _meals;
+    private IReadOnlyList<TagListItem>? _tags;
+    private string? _newName;
+    private string? _newTag;
+    private string? _filter;
+    private bool _saving;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _meals = await Planning.GetMealsAsync();
+        _tags = await Planning.GetTagsAsync();
+    }
+
+    // The filter also finds meals by tag.
+    private bool Matches(MealListItem meal) =>
+        string.IsNullOrWhiteSpace(_filter)
+        || meal.Name.Contains(_filter.Trim(), StringComparison.CurrentCultureIgnoreCase)
+        || meal.Tags.Any(t => t.Contains(_filter.Trim(), StringComparison.CurrentCultureIgnoreCase));
+
+    private async Task OnNameKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            await AddAsync();
+    }
+
+    private async Task AddAsync()
+    {
+        if (_saving)
+            return;
+
+        _saving = true;
+        var name = MealPlanningService.CleanName(_newName ?? "");
+        var ok = await Snackbar.RunAsync(() => Planning.AddMealAsync(name), $"Toegevoegd: {name}");
+        _saving = false;
+
+        if (!ok)
+            return;
+
+        _newName = "";
+        await LoadAsync();
+        await _nameField.FocusAsync();
+    }
+
+    private async Task OnTagKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            await AddTagAsync();
+    }
+
+    private async Task AddTagAsync()
+    {
+        if (_saving)
+            return;
+
+        _saving = true;
+        var name = MealPlanningService.CleanName(_newTag ?? "");
+        var ok = await Snackbar.RunAsync(() => Planning.AddTagAsync(name), $"Tag toegevoegd: {name}");
+        _saving = false;
+
+        if (!ok)
+            return;
+
+        _newTag = "";
+        await LoadAsync();
+    }
+
+    private async Task EditTagAsync(TagListItem tag)
+    {
+        var parameters = new DialogParameters<TagDialog> { { d => d.Tag, tag } };
+        var options = new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true };
+
+        var dialog = await DialogService.ShowAsync<TagDialog>("", parameters, options);
+        if (await dialog.Result is { Canceled: false })
+            await LoadAsync();
+    }
+
+    private async Task EditMealTagsAsync(MealListItem meal)
+    {
+        var parameters = new DialogParameters<MealTagsDialog>
+        {
+            { d => d.MealId, meal.Id },
+            { d => d.MealName, meal.Name },
+            { d => d.Tags, meal.Tags }
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
+
+        var dialog = await DialogService.ShowAsync<MealTagsDialog>("", parameters, options);
+        if (await dialog.Result is { Canceled: false })
+            await LoadAsync();
+    }
+
+    private async Task DeleteAsync(MealListItem meal)
+    {
+        var message = $"Gerecht '{meal.Name}' verwijderen? Ook de planningen en de geschiedenis ervan worden gewist.";
+
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Gerecht verwijderen", message, yesText: "Verwijderen", cancelText: "Annuleren");
+        if (confirmed != true)
+            return;
+
+        await Snackbar.RunAsync(() => Planning.DeleteMealAsync(meal.Id), $"Verwijderd: {meal.Name}");
+        await LoadAsync();
+    }
+}

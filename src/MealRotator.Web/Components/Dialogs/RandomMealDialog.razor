@@ -1,0 +1,154 @@
+@* A die for when you can't choose: shows a random meal, without planning anything. *@
+@implements IDisposable
+@inject MealPlanningService Planning
+@inject NavigationManager Navigation
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Wat eten we?</MudText>
+    </TitleContent>
+
+    <DialogContent>
+        @if (_meals is null)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="my-4" />
+        }
+        else if (_meals.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
+                Je hebt nog geen gerechten.
+                <MudLink OnClick="GoToMeals" Typo="Typo.body2">Voeg er eerst een paar toe bij Gerechten.</MudLink>
+            </MudAlert>
+        }
+        else
+        {
+            @if (_tagNames.Count > 0)
+            {
+                <MudSelect T="string" Value="_tag" ValueChanged="TagChangedAsync" ToStringFunc="TagLabel" Label="Kies uit"
+                           Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true" Disabled="_rolling" Class="mb-2">
+                    <MudSelectItem T="string" Value="AllMeals">@TagLabel(AllMeals)</MudSelectItem>
+                    @foreach (var tag in _tagNames)
+                    {
+                        <MudSelectItem T="string" Value="tag">@TagLabel(tag)</MudSelectItem>
+                    }
+                </MudSelect>
+            }
+            <div class="dice" aria-live="polite">
+                <MudIcon Icon="@Icons.Material.Outlined.Casino" Style="font-size: 3.5rem"
+                         Class="@($"dice__icon {(_rolling ? "dice__icon--rolling" : "")}")" />
+                <MudText Typo="Typo.h4" Class="@($"dice__meal {(_rolling ? "dice__meal--rolling" : "dice__meal--landed")}")">
+                    @_shown?.Name
+                </MudText>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary dice__meta">@Meta</MudText>
+                @if (!_rolling && _shown is not null)
+                {
+                    <TagPills Tags="_shown.Tags" />
+                }
+            </div>
+        }
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton OnClick="() => MudDialog.Close()">Sluiten</MudButton>
+        @if (_meals is { Count: > 0 })
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Outlined.Casino"
+                       Disabled="_rolling" OnClick="RollAsync">
+                Nog eens
+            </MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private const string AllMeals = "";
+
+    // Each frame shows another meal, slowing down like a die that comes to rest.
+    private static readonly int[] FrameDelays = [45, 45, 50, 55, 65, 75, 90, 110, 140, 180, 230];
+
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    private readonly CancellationTokenSource _closed = new();
+    private IReadOnlyList<RotationItem>? _meals;
+    private IReadOnlyList<string> _tagNames = [];
+    private string _tag = AllMeals;
+    private RotationItem? _shown;
+    private RotationItem? _result;
+    private bool _rolling;
+
+    private string? Meta => _rolling || _shown is null ? null
+        : _shown.LastEaten is null ? "Nog nooit gegeten"
+        : $"Laatst gegeten: {Format.Ago(_shown.LastEaten).ToLower()}";
+
+    private IReadOnlyList<RotationItem> Candidates => _tag == AllMeals
+        ? _meals!
+        : _meals!.Where(m => m.Tags.Contains(_tag)).ToList();
+
+    private static string TagLabel(string tag) => tag == AllMeals ? "Alle gerechten" : $"Met tag: {tag}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _meals = await Planning.GetRotationAsync();
+        // Only tags that actually have meals, so every choice can roll something.
+        _tagNames = (await Planning.GetTagsAsync()).Where(t => t.MealCount > 0).Select(t => t.Name).ToList();
+        await RollAsync();
+    }
+
+    private Task TagChangedAsync(string tag)
+    {
+        _tag = tag;
+        return RollAsync();
+    }
+
+    private async Task RollAsync()
+    {
+        if (_meals is not { Count: > 0 })
+            return;
+
+        var candidates = Candidates;
+        _rolling = true;
+        // Rolling again should give something else than last time.
+        var result = Pick(candidates, except: _result);
+
+        try
+        {
+            if (candidates.Count > 1)
+            {
+                foreach (var delay in FrameDelays)
+                {
+                    _shown = Pick(candidates, except: _shown);
+                    StateHasChanged();
+                    await Task.Delay(delay, _closed.Token);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        _shown = _result = result;
+        _rolling = false;
+    }
+
+    private static RotationItem Pick(IReadOnlyList<RotationItem> candidates, RotationItem? except)
+    {
+        var options = candidates.Count > 1 && except is not null
+            ? candidates.Where(m => m.Id != except.Id).ToList()
+            : candidates;
+        return options[Random.Shared.Next(options.Count)];
+    }
+
+    private void GoToMeals()
+    {
+        MudDialog.Cancel();
+        Navigation.NavigateTo("meals");
+    }
+
+    public void Dispose()
+    {
+        _closed.Cancel();
+        _closed.Dispose();
+    }
+}

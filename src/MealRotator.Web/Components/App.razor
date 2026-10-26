@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Maaltijdplanner</title>
+    <base href="/" />
+    <link rel="stylesheet" href="@Assets["_content/MudBlazor/MudBlazor.min.css"]" />
+    <link rel="stylesheet" href="@Assets["css/app.css"]" />
+    <link rel="icon" href="data:," />
+    <HeadOutlet @rendermode="InteractiveServerNoPrerender" />
+</head>
+
+<body>
+    <Routes @rendermode="InteractiveServerNoPrerender" />
+
+    <div id="blazor-error-ui" data-nosnippet>
+        Er is een onverwachte fout opgetreden.
+        <a href="." class="reload">Opnieuw laden</a>
+        <span class="dismiss">🗙</span>
+    </div>
+
+    <script src="@Assets["_content/MudBlazor/MudBlazor.min.js"]"></script>
+    <script src="_framework/blazor.web.js"></script>
+</body>
+</html>
+
+@code {
+    // Without prerendering the page loads once and JS interop works from the first render.
+    private static readonly IComponentRenderMode InteractiveServerNoPrerender = new InteractiveServerRenderMode(prerender: false);
+}

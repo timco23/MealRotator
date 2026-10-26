@@ -1,0 +1,31 @@
+@* Friendly empty state with an icon, explanation and optional button. *@
+
+<MudPaper Outlined="true" Elevation="0" Class="empty-state">
+    <MudIcon Icon="@Icon" Size="Size.Large" Color="Color.Primary" />
+    <MudText Typo="Typo.h6">@Title</MudText>
+    @if (Text is not null)
+    {
+        <MudText Class="mud-text-secondary">@Text</MudText>
+    }
+    @if (ButtonText is not null)
+    {
+        <MudButton Href="@ButtonHref" Variant="Variant.Filled" Color="Color.Primary" Class="mt-2">@ButtonText</MudButton>
+    }
+</MudPaper>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Icon { get; set; } = "";
+
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = "";
+
+    [Parameter]
+    public string? Text { get; set; }
+
+    [Parameter]
+    public string? ButtonText { get; set; }
+
+    [Parameter]
+    public string? ButtonHref { get; set; }
+}

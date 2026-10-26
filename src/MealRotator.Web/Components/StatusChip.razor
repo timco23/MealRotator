@@ -1,0 +1,25 @@
+@* Status label of a day: Gepland (planned) / Niet bevestigd (unconfirmed) / Gegeten (eaten). *@
+
+<MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="Color" Icon="@Icon" Class="ml-0">@Label</MudChip>
+
+@code {
+    [Parameter, EditorRequired]
+    public DateOnly Date { get; set; }
+
+    [Parameter, EditorRequired]
+    public MealEntryStatus Status { get; set; }
+
+    private bool IsUnconfirmed => Status == MealEntryStatus.Planned && Date < Format.Today;
+
+    private string Label => Status == MealEntryStatus.Eaten ? "Gegeten"
+        : IsUnconfirmed ? "Niet bevestigd"
+        : "Gepland";
+
+    private Color Color => Status == MealEntryStatus.Eaten ? Color.Success
+        : IsUnconfirmed ? Color.Warning
+        : Color.Default;
+
+    private string Icon => Status == MealEntryStatus.Eaten ? Icons.Material.Outlined.CheckCircle
+        : IsUnconfirmed ? Icons.Material.Outlined.HelpOutline
+        : Icons.Material.Outlined.Schedule;
+}

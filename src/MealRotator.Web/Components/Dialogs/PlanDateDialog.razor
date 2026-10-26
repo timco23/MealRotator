@@ -1,0 +1,98 @@
+@using System.Globalization
+@inject MealPlanningService Planning
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">@MealName plannen</MudText>
+    </TitleContent>
+
+    <DialogContent>
+        @if (_date is null)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="my-4" />
+        }
+        else
+        {
+            <div class="d-flex justify-center">
+                <MudDatePicker PickerVariant="PickerVariant.Static"
+                               Date="_date"
+                               DateChanged="OnDateChangedAsync"
+                               Culture="CultureInfo.CurrentCulture"
+                               FirstDayOfWeek="DayOfWeek.Monday"
+                               TitleDateFormat="ddd d MMM"
+                               Elevation="0" />
+            </div>
+
+            @if (_existing is not null)
+            {
+                <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-3">
+                    Op @Format.DayShort(_existing.Date) staat al
+                    <b>@_existing.Meal.Name</b>
+                    (@(_existing.Status == MealEntryStatus.Eaten ? "gegeten" : "gepland")).
+                    Dat wordt vervangen.
+                </MudAlert>
+            }
+        }
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton OnClick="() => MudDialog.Cancel()">Annuleren</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_date is null || _saving" OnClick="SaveAsync">
+            Plannen
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter, EditorRequired]
+    public string MealName { get; set; } = "";
+
+    // The date picker works with DateTime?; the rest of the app uses DateOnly.
+    private DateTime? _date;
+    private MealEntry? _existing;
+    private bool _saving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var firstFree = await FindFirstFreeDayAsync();
+        _date = firstFree.ToDateTime(TimeOnly.MinValue);
+    }
+
+    /// <summary>First day in the next 12 weeks that has nothing planned or recorded yet.</summary>
+    private async Task<DateOnly> FindFirstFreeDayAsync()
+    {
+        var today = Format.Today;
+        var days = await Planning.GetDaysAsync(today, today.AddDays(12 * 7));
+        return days.FirstOrDefault(d => d.Entry is null)?.Date ?? today;
+    }
+
+    private async Task OnDateChangedAsync(DateTime? date)
+    {
+        _date = date;
+        _existing = null;
+
+        if (date is null)
+            return;
+
+        var day = DateOnly.FromDateTime(date.Value);
+        var days = await Planning.GetDaysAsync(day, day);
+        _existing = days[0].Entry;
+    }
+
+    private async Task SaveAsync()
+    {
+        var day = DateOnly.FromDateTime(_date!.Value);
+        _saving = true;
+
+        var ok = await Snackbar.RunAsync(() => Planning.PlanAsync(day, MealName),
+            $"Gepland: {MealName} op {Format.DayShort(day)}");
+
+        _saving = false;
+        if (ok)
+            MudDialog.Close(DialogResult.Ok(true));
+    }
+}

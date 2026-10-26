@@ -1,0 +1,177 @@
+@page "/"
+@inject MealPlanningService Planning
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<div class="page-header">
+    <div>
+        <MudText Typo="Typo.h4" HtmlTag="h1">Kalender</MudText>
+        <MudText Typo="Typo.subtitle1" Class="mud-text-secondary">@WeekLabel</MudText>
+    </div>
+    <div class="d-flex gap-1">
+        <MudIconButton Icon="@Icons.Material.Filled.ChevronLeft" aria-label="Vorige week" OnClick="() => GoToWeekAsync(_weekStart.AddDays(-7))" />
+        <MudButton Variant="Variant.Outlined" OnClick="() => GoToWeekAsync(CurrentWeekStart)">Vandaag</MudButton>
+        <MudIconButton Icon="@Icons.Material.Filled.ChevronRight" aria-label="Volgende week" OnClick="() => GoToWeekAsync(_weekStart.AddDays(7))" />
+    </div>
+</div>
+
+@if (_days.Count == 0)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else
+{
+    <div class="week-calendar">
+        @foreach (var day in _days)
+        {
+            var entry = day.Entry;
+            var isToday = day.Date == Format.Today;
+
+            <MudCard @key="day.Date" Outlined="true" Elevation="0" Class="@($"day-card {(isToday ? "day-card--today" : "")}")">
+                <MudCardHeader Class="pb-1">
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.subtitle1" Class="day-card__name">@Format.DayName(day.Date)</MudText>
+                        <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                            @day.Date.ToString("d MMM")
+                            @if (isToday)
+                            {
+                                <span class="day-card__today">· vandaag</span>
+                            }
+                        </MudText>
+                    </CardHeaderContent>
+                    <CardHeaderActions>
+                        @if (entry is not null)
+                        {
+                            <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" aria-label="Acties"
+                                     AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" Dense="true">
+                                @if (entry.Status == MealEntryStatus.Planned && day.Date <= Format.Today)
+                                {
+                                    <MudMenuItem Icon="@Icons.Material.Outlined.CheckCircle" OnClick="() => MarkEatenAsync(day)">
+                                        Markeer als gegeten
+                                    </MudMenuItem>
+                                    <MudMenuItem Icon="@Icons.Material.Outlined.SwapHoriz" OnClick="() => OpenPlanDialogAsync(day.Date, PlanMode.Eaten)">
+                                        Iets anders gegeten…
+                                    </MudMenuItem>
+                                    <MudDivider />
+                                }
+                                @if (entry.Status == MealEntryStatus.Planned)
+                                {
+                                    <MudMenuItem Icon="@Icons.Material.Outlined.Edit" OnClick="() => OpenPlanDialogAsync(day.Date, PlanMode.Plan, entry.Meal.Name)">
+                                        Wijzig planning…
+                                    </MudMenuItem>
+                                    <MudMenuItem Icon="@Icons.Material.Outlined.EventBusy" OnClick="() => RemovePlanAsync(day)">
+                                        Planning verwijderen
+                                    </MudMenuItem>
+                                }
+                                else
+                                {
+                                    <MudMenuItem Icon="@Icons.Material.Outlined.Delete" OnClick="() => DeleteEntryAsync(entry)">
+                                        Registratie verwijderen
+                                    </MudMenuItem>
+                                }
+                            </MudMenu>
+                        }
+                    </CardHeaderActions>
+                </MudCardHeader>
+
+                <MudCardContent Class="day-card__body pt-1">
+                    @if (entry is not null)
+                    {
+                        <MudText Typo="Typo.h6" Class="day-card__meal">@entry.Meal.Name</MudText>
+                        <StatusChip Date="day.Date" Status="entry.Status" />
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.body2" Class="mud-text-secondary mb-2">Nog niets gepland</MudText>
+                        <div class="d-flex flex-wrap gap-1">
+                            <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small"
+                                       StartIcon="@Icons.Material.Filled.Add"
+                                       OnClick="() => OpenPlanDialogAsync(day.Date, PlanMode.Plan)">
+                                Plan gerecht
+                            </MudButton>
+                            @if (day.Date <= Format.Today)
+                            {
+                                <MudButton Variant="Variant.Text" Color="Color.Default" Size="Size.Small"
+                                           OnClick="() => OpenPlanDialogAsync(day.Date, PlanMode.Eaten)">
+                                    Gegeten…
+                                </MudButton>
+                            }
+                        </div>
+                    }
+                </MudCardContent>
+            </MudCard>
+        }
+    </div>
+}
+
+@code {
+    private static DateOnly CurrentWeekStart => MealPlanningService.StartOfWeek(Format.Today);
+
+    // The seven days, Monday to Sunday, of the week that is shown.
+    private IReadOnlyList<DayPlan> _days = [];
+    private DateOnly _weekStart = CurrentWeekStart;
+
+    private string WeekLabel
+    {
+        get
+        {
+            var number = System.Globalization.ISOWeek.GetWeekOfYear(_weekStart.ToDateTime(TimeOnly.MinValue));
+            var label = $"Week {number} · {Format.WeekRange(_weekStart)}";
+            return _weekStart == CurrentWeekStart ? $"{label} · deze week" : label;
+        }
+    }
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync() =>
+        _days = await Planning.GetDaysAsync(_weekStart, _weekStart.AddDays(6));
+
+    private Task GoToWeekAsync(DateOnly weekStart)
+    {
+        _weekStart = weekStart;
+        return LoadAsync();
+    }
+
+    private async Task OpenPlanDialogAsync(DateOnly date, PlanMode mode, string? initialMeal = null)
+    {
+        var parameters = new DialogParameters<PlanMealDialog>
+        {
+            { d => d.Date, date },
+            { d => d.Mode, mode },
+            { d => d.InitialMeal, initialMeal }
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
+
+        var dialog = await DialogService.ShowAsync<PlanMealDialog>("", parameters, options);
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+            await LoadAsync();
+    }
+
+    private async Task MarkEatenAsync(DayPlan day)
+    {
+        await Snackbar.RunAsync(() => Planning.MarkEatenAsync(day.Date),
+            $"Gegeten: {day.Entry!.Meal.Name} op {Format.DayShort(day.Date)}");
+        await LoadAsync();
+    }
+
+    private async Task RemovePlanAsync(DayPlan day)
+    {
+        await Snackbar.RunAsync(() => Planning.RemovePlanAsync(day.Date), "Planning verwijderd");
+        await LoadAsync();
+    }
+
+    private async Task DeleteEntryAsync(MealEntry entry)
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Registratie verwijderen",
+            $"Registratie van {entry.Meal.Name} verwijderen?",
+            yesText: "Verwijderen",
+            cancelText: "Annuleren");
+        if (confirmed != true)
+            return;
+
+        await Snackbar.RunAsync(() => Planning.DeleteEntryAsync(entry.Id), "Registratie verwijderd");
+        await LoadAsync();
+    }
+}

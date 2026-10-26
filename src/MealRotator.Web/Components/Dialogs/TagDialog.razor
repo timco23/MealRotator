@@ -1,0 +1,88 @@
+@* Rename or delete one tag. *@
+@inject MealPlanningService Planning
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Tag bewerken</MudText>
+    </TitleContent>
+
+    <DialogContent>
+        <MudTextField T="string"
+                      @bind-Value="_name"
+                      Immediate="true"
+                      Label="Naam"
+                      MaxLength="MealPlanningService.MaxTagLength"
+                      OnKeyDown="OnKeyDownAsync"
+                      AutoFocus="true"
+                      Variant="Variant.Outlined" />
+        <MudText Typo="Typo.caption" Class="mud-text-secondary">@Usage</MudText>
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton Color="Color.Error" StartIcon="@Icons.Material.Outlined.Delete" Disabled="_saving"
+                   OnClick="DeleteAsync" Class="mr-auto">
+            Verwijderen
+        </MudButton>
+        <MudButton OnClick="() => MudDialog.Cancel()">Annuleren</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_saving" OnClick="SaveAsync">
+            Opslaan
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter, EditorRequired]
+    public TagListItem Tag { get; set; } = null!;
+
+    private string? _name;
+    private bool _saving;
+
+    private string Usage => Tag.MealCount switch
+    {
+        0 => "Nog bij geen enkel gerecht gebruikt.",
+        1 => "Gebruikt bij 1 gerecht.",
+        var n => $"Gebruikt bij {n} gerechten."
+    };
+
+    protected override void OnInitialized() => _name = Tag.Name;
+
+    private async Task OnKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            await SaveAsync();
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_saving)
+            return;
+
+        _saving = true;
+        var name = MealPlanningService.CleanName(_name ?? "");
+        var ok = await Snackbar.RunAsync(() => Planning.RenameTagAsync(Tag.Id, name), $"Tag opgeslagen: {name}");
+        _saving = false;
+
+        if (ok)
+            MudDialog.Close(DialogResult.Ok(true));
+    }
+
+    private async Task DeleteAsync()
+    {
+        var message = Tag.MealCount == 0
+            ? $"Tag '{Tag.Name}' verwijderen?"
+            : $"Tag '{Tag.Name}' verwijderen? Hij verdwijnt bij {(Tag.MealCount == 1 ? "1 gerecht" : $"{Tag.MealCount} gerechten")}; de gerechten zelf blijven.";
+
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Tag verwijderen", message, yesText: "Verwijderen", cancelText: "Annuleren");
+        if (confirmed != true)
+            return;
+
+        if (await Snackbar.RunAsync(() => Planning.DeleteTagAsync(Tag.Id), $"Tag verwijderd: {Tag.Name}"))
+            MudDialog.Close(DialogResult.Ok(true));
+    }
+}

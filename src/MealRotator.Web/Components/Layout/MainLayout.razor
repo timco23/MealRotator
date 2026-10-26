@@ -1,0 +1,90 @@
+@inherits LayoutComponentBase
+@inject IDialogService DialogService
+@inject IJSRuntime JS
+
+<MudThemeProvider @ref="_themeProvider" Theme="AppTheme.Theme" @bind-IsDarkMode="_isDarkMode" />
+<MudPopoverProvider />
+<MudDialogProvider CloseOnEscapeKey="true" />
+<MudSnackbarProvider />
+
+<MudLayout Class="@(_isDarkMode ? "theme-dark" : null)">
+    <MudAppBar Elevation="0" Class="app-bar">
+        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start"
+                       aria-label="Menu in- of uitklappen" OnClick="() => _drawerOpen = !_drawerOpen" />
+        <MudIcon Icon="@Icons.Material.Outlined.RestaurantMenu" Class="ml-2 mr-3" />
+        <MudText Typo="Typo.h6">Maaltijdplanner</MudText>
+        <MudSpacer />
+        <MudTooltip Text="Willekeurig gerecht">
+            <MudIconButton Icon="@Icons.Material.Outlined.Casino" Color="Color.Inherit" aria-label="Willekeurig gerecht kiezen"
+                           OnClick="OpenRandomMealAsync" />
+        </MudTooltip>
+        <MudTooltip Text="@(_isDarkMode ? "Licht thema" : "Donker thema")">
+            <MudIconButton Icon="@(_isDarkMode ? Icons.Material.Outlined.LightMode : Icons.Material.Outlined.DarkMode)"
+                           Color="Color.Inherit" aria-label="Thema wisselen" OnClick="ToggleDarkMode" />
+        </MudTooltip>
+    </MudAppBar>
+
+    <MudDrawer @bind-Open="_drawerOpen" Variant="DrawerVariant.Mini" ClipMode="DrawerClipMode.Always" Elevation="0">
+        <MudNavMenu Class="pt-2">
+            <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.CalendarMonth">Kalender</MudNavLink>
+            <MudNavLink Href="rotation" Icon="@Icons.Material.Outlined.History">Rotatie</MudNavLink>
+            <MudNavLink Href="meals" Icon="@Icons.Material.Outlined.MenuBook">Gerechten</MudNavLink>
+            <MudNavLink Href="data" Icon="@Icons.Material.Outlined.ImportExport">Gegevens</MudNavLink>
+        </MudNavMenu>
+    </MudDrawer>
+
+    <MudMainContent>
+        <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-6">
+            <ErrorBoundary @ref="_errorBoundary">
+                <ChildContent>
+                    @Body
+                </ChildContent>
+                <ErrorContent>
+                    <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="mb-4">
+                        Er ging iets mis bij het tonen van deze pagina.
+                    </MudAlert>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="() => _errorBoundary?.Recover()">
+                        Opnieuw proberen
+                    </MudButton>
+                </ErrorContent>
+            </ErrorBoundary>
+        </MudContainer>
+    </MudMainContent>
+</MudLayout>
+
+@code {
+    private const string ThemePreferenceKey = "theme";
+
+    private MudThemeProvider _themeProvider = null!;
+    private ErrorBoundary? _errorBoundary;
+    private IJSObjectReference? _themeModule;
+    private bool _isDarkMode;
+    private bool _drawerOpen = true;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        // JS interop (system theme) is only available after the first render.
+        _themeModule = await JS.InvokeAsync<IJSObjectReference>("import", "./js/theme.js");
+        var saved = await _themeModule.InvokeAsync<string>("get", ThemePreferenceKey);
+        _isDarkMode = saved switch
+        {
+            "dark" => true,
+            "light" => false,
+            _ => await _themeProvider.GetSystemDarkModeAsync()
+        };
+        StateHasChanged();
+    }
+
+    private Task OpenRandomMealAsync() =>
+        DialogService.ShowAsync<RandomMealDialog>("", new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true });
+
+    private async Task ToggleDarkMode()
+    {
+        _isDarkMode = !_isDarkMode;
+        if (_themeModule is not null)
+            await _themeModule.InvokeVoidAsync("set", ThemePreferenceKey, _isDarkMode ? "dark" : "light");
+    }
+}
