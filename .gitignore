@@ -1,0 +1,25 @@
+# Build output
+bin/
+obj/
+
+# Local database (personal data; move it with Gegevens > export/import)
+App_Data/
+*.db
+*.db-shm
+*.db-wal
+
+# IDE / editor
+.vs/
+.idea/
+*.user
+*.suo
+*.rsuser
+
+# Test results / coverage
+TestResults/
+coverage*.xml
+*.coverage
+
+# OS
+.DS_Store
+Thumbs.db
